@@ -1,0 +1,68 @@
+plugins {
+    id 'com.android.application'
+}
+
+android {
+    namespace 'hr.astrid.minigun'
+    compileSdk 35
+    defaultConfig {
+        applicationId 'hr.astrid.minigun'
+        minSdk 26
+        targetSdk 35
+        versionCode 1
+        versionName '1.0-alpha'
+        ndk { abiFilters 'arm64-v8a' }
+        externalNativeBuild {
+            cmake { cppFlags '-std=c++17 -Wall -Wextra -Wno-unused-parameter' }
+        }
+    }
+    externalNativeBuild {
+        cmake { path 'src/main/cpp/CMakeLists.txt' }
+    }
+    packaging {
+        jniLibs.useLegacyPackaging = true
+    }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}
+
+// SNES core stays under its original noncommercial license. No game ROM is bundled.
+// This download is run by the build machine (Android Studio / GitHub Actions), not the phone.
+def snes9xCoreFile = layout.projectDirectory.file('src/main/jniLibs/arm64-v8a/libsnes9x_libretro_android.so').asFile
+
+tasks.register('downloadSnes9xCore') {
+    outputs.file(snes9xCoreFile)
+    doLast {
+        if (snes9xCoreFile.exists() && snes9xCoreFile.length() > 100_000) return
+        snes9xCoreFile.parentFile.mkdirs()
+        def uri = new URI('https://buildbot.libretro.com/nightly/android/latest/arm64-v8a/snes9x_libretro_android.so.zip')
+        def conn = uri.toURL().openConnection()
+        conn.connectTimeout = 30000
+        conn.readTimeout = 60000
+        conn.setRequestProperty('User-Agent', 'ChoplifterMinigunAndroid/1.0')
+        boolean found = false
+        conn.inputStream.withCloseable { stream ->
+            new java.util.zip.ZipInputStream(stream).withCloseable { zip ->
+                java.util.zip.ZipEntry entry
+                while ((entry = zip.nextEntry) != null) {
+                    if (!entry.isDirectory() && entry.name.endsWith('.so')) {
+                        snes9xCoreFile.withOutputStream { out ->
+                            byte[] buffer = new byte[32768]
+                            int length
+                            while ((length = zip.read(buffer)) > 0) out.write(buffer, 0, length)
+                        }
+                        found = true
+                        break
+                    }
+                }
+            }
+        }
+        if (!found || snes9xCoreFile.length() < 100_000) {
+            throw new GradleException('Snes9x core was not found in the downloaded archive.')
+        }
+    }
+}
+
+tasks.named('preBuild').configure { dependsOn tasks.named('downloadSnes9xCore') }

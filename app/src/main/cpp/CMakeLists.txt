@@ -1,0 +1,5 @@
+cmake_minimum_required(VERSION 3.22.1)
+project(minigunbridge LANGUAGES CXX)
+add_library(minigunbridge SHARED minigun_bridge.cpp)
+target_compile_features(minigunbridge PRIVATE cxx_std_17)
+target_link_libraries(minigunbridge PRIVATE android log jnigraphics dl)
